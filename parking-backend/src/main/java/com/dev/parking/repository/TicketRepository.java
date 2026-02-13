@@ -1,4 +1,4 @@
-package src.main.java.com.dev.parking.repository;
+package com.dev.parking.repository;
 
 import com.dev.parking.entity.Ticket;
 import com.dev.parking.entity.TicketStatus;

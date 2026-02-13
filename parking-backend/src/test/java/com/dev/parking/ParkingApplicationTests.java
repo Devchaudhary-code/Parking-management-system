@@ -1,4 +1,4 @@
-package src.test.java.com.dev.parking;
+package com.dev.parking;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

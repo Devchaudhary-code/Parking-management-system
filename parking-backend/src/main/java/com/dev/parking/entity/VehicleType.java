@@ -1,4 +1,4 @@
-package src.main.java.com.dev.parking.entity;
+package com.dev.parking.entity;
 
 public enum VehicleType {
     CAR,

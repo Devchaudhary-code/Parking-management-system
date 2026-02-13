@@ -1,9 +1,9 @@
-package src.main.java.com.dev.parking.service;
+package com.dev.parking.service;
 
 import com.dev.parking.entity.Ticket;
 import com.dev.parking.entity.TicketStatus;
 import com.dev.parking.entity.VehicleType;
-import src.main.java.com.dev.parking.repository.TicketRepository;
+import com.dev.parking.repository.TicketRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
