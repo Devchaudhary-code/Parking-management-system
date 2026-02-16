@@ -9,10 +9,16 @@
         <option value="$PROJECT_DIR$/parking_backend/pom.xml" />
         <option value="$PROJECT_DIR$/parking_backend/parking-backend/pom.xml" />
         <option value="$PROJECT_DIR$/parking-backend/pom.xml" />
+        <option value="$PROJECT_DIR$/demo/pom.xml" />
       </list>
     </option>
+    <option name="ignoredFiles">
+      <set>
+        <option value="$PROJECT_DIR$/demo/pom.xml" />
+      </set>
+    </option>
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="25" project-jdk-type="JavaSDK">
+  <component name="ProjectRootManager" version="2" default="true" project-jdk-name="25" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/out" />
   </component>
 </project>
