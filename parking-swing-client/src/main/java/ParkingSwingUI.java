@@ -12,12 +12,12 @@ import java.util.List;
 
 public class ParkingSwingUI extends JFrame {
 
-    // ---- Backend ----
+
     private static final String BASE_URL = "http://localhost:8080";
 
     private final HttpClient http = HttpClient.newHttpClient();
 
-    // ---- UI State ----
+
     private final JTextField plateField = new JTextField();
     private final JComboBox<String> vehicleTypeBox =
             new JComboBox<>(new String[]{"CAR", "BIKE", "TRUCK", "OTHER"});
@@ -67,7 +67,7 @@ public class ParkingSwingUI extends JFrame {
         refreshHistory();
     }
 
-    // ---------------- UI BUILDERS ----------------
+
 
     private JComponent buildTopBar() {
         JPanel root = new JPanel(new BorderLayout());
@@ -228,7 +228,7 @@ public class ParkingSwingUI extends JFrame {
         return root;
     }
 
-    // ---------------- ACTIONS ----------------
+
 
     private void doEntry() {
         String plate = plateField.getText().trim();
@@ -344,7 +344,7 @@ public class ParkingSwingUI extends JFrame {
                 });
     }
 
-    // ---------------- TABLE FILL ----------------
+
 
     private void fillLive(List<Row> rows) {
         liveModel.setRowCount(0);
@@ -370,7 +370,7 @@ public class ParkingSwingUI extends JFrame {
         return (s == null || s.isBlank() || s.equals("null")) ? "—" : s;
     }
 
-    // If parsing fails, we still show something helpful
+
     private void liveAreaFallback(String msg) {
         toast(msg);
         log(msg);
@@ -381,7 +381,7 @@ public class ParkingSwingUI extends JFrame {
         log(msg);
     }
 
-    // ---------------- Styling ----------------
+
 
     private void styleTable(JTable table) {
         table.setRowHeight(28);
