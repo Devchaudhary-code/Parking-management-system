@@ -1,659 +1,308 @@
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
+
 
 public class ParkingSwingUI extends JFrame {
 
-
-    private static final String BASE_URL = "http://localhost:8080";
+    // === change if needed ===
+    private static final String BASE_URL = "http://localhost:8080/api/tickets";
 
     private final HttpClient http = HttpClient.newHttpClient();
+    private final ObjectMapper mapper = new ObjectMapper();
 
+    // Tables
+    private final DefaultTableModel liveModel = tableModel();
+    private final DefaultTableModel historyModel = tableModel();
 
-    private final JTextField plateField = new JTextField();
-    private final JComboBox<String> vehicleTypeBox =
-            new JComboBox<>(new String[]{"CAR", "BIKE", "TRUCK", "OTHER"});
+    // Live controls
+    private final JComboBox<String> liveSort = new JComboBox<>(new String[]{
+            "entryTime desc", "entryTime asc", "plate asc", "plate desc"
+    });
 
-    private final JLabel liveCountLabel = new JLabel("0");
-    private final JLabel historyCountLabel = new JLabel("0");
-    private final JLabel serverStatusLabel = new JLabel("Server: unknown");
+    // History controls
+    private final JTextField searchPlate = new JTextField(18);
+    private final JComboBox<String> filterStatus = new JComboBox<>(new String[]{
+            "CLOSED", "OPEN", "ALL"
+    });
+    private final JComboBox<String> filterVehicle = new JComboBox<>(new String[]{
+            "ALL", "CAR", "BIKE", "TRUCK", "OTHER"
+    });
+    private final JComboBox<String> historySort = new JComboBox<>(new String[]{
+            "exitTime desc", "exitTime asc", "entryTime desc", "entryTime asc", "plate asc", "plate desc"
+    });
 
-    private final DefaultTableModel liveModel = new DefaultTableModel(
-            new String[]{"TicketId", "Plate", "Type", "Entry Time", "Lot", "Slot", "Status"}, 0
-    ) {
-        public boolean isCellEditable(int r, int c) { return false; }
-    };
-
-    private final DefaultTableModel historyModel = new DefaultTableModel(
-            new String[]{"TicketId", "Plate", "Type", "Entry Time", "Exit Time", "Amount", "Lot", "Slot", "Status"}, 0
-    ) {
-        public boolean isCellEditable(int r, int c) { return false; }
-    };
-
-    private final JTable liveTable = new JTable(liveModel);
-    private final JTable historyTable = new JTable(historyModel);
-
-    private final JTextArea logArea = new JTextArea();
+    private final JLabel statusBar = new JLabel("Ready");
 
     public ParkingSwingUI() {
-        super("Parking System • Swing Client");
-
-        // System look & feel (native)
-        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
+        super("Parking System");
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1100, 700);
+        setSize(1050, 650);
         setLocationRelativeTo(null);
 
-        setLayout(new BorderLayout());
-        add(buildTopBar(), BorderLayout.NORTH);
-        add(buildCenter(), BorderLayout.CENTER);
-        add(buildBottomLog(), BorderLayout.SOUTH);
+        setLookAndFeel();
 
-        styleTable(liveTable);
-        styleTable(historyTable);
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Live", buildLiveTab());
+        tabs.addTab("History", buildHistoryTab());
+
+        JPanel root = new JPanel(new BorderLayout());
+        root.add(tabs, BorderLayout.CENTER);
+
+        statusBar.setBorder(new EmptyBorder(8, 12, 8, 12));
+        root.add(statusBar, BorderLayout.SOUTH);
+
+        setContentPane(root);
 
         // Initial load
-        pingServer();
-        refreshLive();
-        refreshHistory();
+        loadLive();
+        loadHistory();
     }
 
+    private JPanel buildLiveTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
 
+        JLabel title = new JLabel("Live (OPEN tickets)");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
 
-    private JComponent buildTopBar() {
-        JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(14, 16, 10, 16));
+        JButton refresh = new JButton("Refresh");
+        refresh.addActionListener(e -> loadLive());
 
-        JLabel title = new JLabel("Parking Management");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
+        JPanel top = new JPanel(new BorderLayout(10, 10));
+        top.add(title, BorderLayout.WEST);
 
-        JLabel subtitle = new JLabel("Swing client → Spring Boot API → MySQL");
-        subtitle.setForeground(new Color(90, 90, 90));
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        controls.add(new JLabel("Sort:"));
+        controls.add(liveSort);
+        controls.add(refresh);
+        top.add(controls, BorderLayout.EAST);
 
-        JPanel left = new JPanel();
-        left.setOpaque(false);
-        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.add(title);
-        left.add(Box.createVerticalStrut(4));
-        left.add(subtitle);
+        liveSort.addActionListener(e -> loadLive());
 
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        right.setOpaque(false);
+        JTable table = new JTable(liveModel);
+        styleTable(table);
 
-        serverStatusLabel.setOpaque(true);
-        serverStatusLabel.setBorder(new EmptyBorder(6, 10, 6, 10));
-        serverStatusLabel.setBackground(new Color(245, 245, 245));
-
-        JButton pingBtn = softButton("Ping Server");
-        pingBtn.addActionListener(e -> pingServer());
-
-        right.add(serverStatusLabel);
-        right.add(pingBtn);
-
-        root.add(left, BorderLayout.WEST);
-        root.add(right, BorderLayout.EAST);
-
-        return root;
+        panel.add(top, BorderLayout.NORTH);
+        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        return panel;
     }
 
-    private JComponent buildCenter() {
-        JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(0, 16, 12, 16));
+    private JPanel buildHistoryTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
 
-        // “Card” action panel
-        root.add(buildActionsCard(), BorderLayout.NORTH);
+        JLabel title = new JLabel("History");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
 
-        // Tabs
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Live (OPEN)", buildLiveTab());
-        tabs.addTab("History (CLOSED)", buildHistoryTab());
+        JButton apply = new JButton("Apply");
+        JButton clear = new JButton("Clear");
+        JButton refresh = new JButton("Refresh");
 
-        root.add(tabs, BorderLayout.CENTER);
-        return root;
+        apply.addActionListener(e -> loadHistory());
+        refresh.addActionListener(e -> loadHistory());
+        clear.addActionListener(e -> {
+            searchPlate.setText("");
+            filterStatus.setSelectedItem("CLOSED");
+            filterVehicle.setSelectedItem("ALL");
+            historySort.setSelectedItem("exitTime desc");
+            loadHistory();
+        });
+
+        // Enter in search triggers apply
+        searchPlate.addActionListener(e -> loadHistory());
+
+        JPanel top = new JPanel(new BorderLayout(10, 10));
+        top.add(title, BorderLayout.WEST);
+
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        controls.add(new JLabel("Search Plate:"));
+        controls.add(searchPlate);
+
+        controls.add(new JLabel("Status:"));
+        controls.add(filterStatus);
+
+        controls.add(new JLabel("Type:"));
+        controls.add(filterVehicle);
+
+        controls.add(new JLabel("Sort:"));
+        controls.add(historySort);
+
+        controls.add(apply);
+        controls.add(clear);
+        controls.add(refresh);
+
+        top.add(controls, BorderLayout.EAST);
+
+        JTable table = new JTable(historyModel);
+        styleTable(table);
+
+        panel.add(top, BorderLayout.NORTH);
+        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        return panel;
     }
 
-    private JComponent buildActionsCard() {
-        JPanel card = new JPanel(new BorderLayout());
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(220, 220, 220)),
-                new EmptyBorder(12, 12, 12, 12)
-        ));
-        card.setBackground(Color.WHITE);
+    // ---------- Data loading (async) ----------
 
-        JPanel row = new JPanel(new GridBagLayout());
-        row.setOpaque(false);
+    private void loadLive() {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("status", "OPEN");
+        params.put("sort", toSortParam((String) liveSort.getSelectedItem())); // "entryTime,desc"
 
-        GridBagConstraints gc = new GridBagConstraints();
-        gc.insets = new Insets(6, 6, 6, 6);
-        gc.fill = GridBagConstraints.HORIZONTAL;
-        gc.gridy = 0;
-
-        // Plate
-        gc.gridx = 0; gc.weightx = 0;
-        row.add(new JLabel("Car number (plate)"), gc);
-
-        gc.gridx = 1; gc.weightx = 1;
-        plateField.setColumns(16);
-        row.add(plateField, gc);
-
-        // Type
-        gc.gridx = 2; gc.weightx = 0;
-        row.add(new JLabel("Vehicle type"), gc);
-
-        gc.gridx = 3; gc.weightx = 0.4;
-        row.add(vehicleTypeBox, gc);
-
-        // Buttons
-        gc.gridx = 4; gc.weightx = 0;
-        JButton entryBtn = primaryButton("Create Entry");
-        entryBtn.addActionListener(e -> doEntry());
-        row.add(entryBtn, gc);
-
-        gc.gridx = 5;
-        JButton exitBtn = dangerButton("Close Ticket");
-        exitBtn.addActionListener(e -> doExit());
-        row.add(exitBtn, gc);
-
-        // Quick stats
-        JPanel stats = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
-        stats.setOpaque(false);
-
-        stats.add(statPill("Live", liveCountLabel));
-        stats.add(statPill("History", historyCountLabel));
-
-        card.add(row, BorderLayout.NORTH);
-        card.add(stats, BorderLayout.SOUTH);
-
-        return card;
+        fetchTickets(params, tickets -> fillTable(liveModel, tickets));
     }
 
-    private JComponent buildLiveTab() {
-        JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(10, 0, 0, 0));
+    private void loadHistory() {
+        Map<String, String> params = new LinkedHashMap<>();
 
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        JButton refresh = softButton("Refresh");
-        refresh.addActionListener(e -> refreshLive());
+        // Status dropdown: default CLOSED. If ALL -> skip param
+        String st = (String) filterStatus.getSelectedItem();
+        if (!"ALL".equals(st)) params.put("status", st);
 
-        JButton closeSelected = softButton("Close Selected");
-        closeSelected.addActionListener(e -> closeSelectedFromLive());
+        // Vehicle type dropdown: if ALL -> skip
+        String vt = (String) filterVehicle.getSelectedItem();
+        if (!"ALL".equals(vt)) params.put("vehicleType", vt);
 
-        top.add(refresh);
-        top.add(closeSelected);
+        // Plate search: if non-empty -> plate contains
+        String plate = searchPlate.getText().trim();
+        if (!plate.isEmpty()) params.put("plate", plate);
 
-        root.add(top, BorderLayout.NORTH);
-        root.add(wrapTable(liveTable), BorderLayout.CENTER);
+        params.put("sort", toSortParam((String) historySort.getSelectedItem()));
 
-        return root;
+        fetchTickets(params, tickets -> fillTable(historyModel, tickets));
     }
 
-    private JComponent buildHistoryTab() {
-        JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(10, 0, 0, 0));
+    private void fetchTickets(Map<String, String> params, java.util.function.Consumer<List<TicketDTO>> onSuccess) {
+        String url = buildUrl(BASE_URL, params);
 
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        JButton refresh = softButton("Refresh");
-        refresh.addActionListener(e -> refreshHistory());
+        setStatus("Loading: " + url);
 
-        top.add(refresh);
+        SwingWorker<List<TicketDTO>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<TicketDTO> doInBackground() throws Exception {
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .GET()
+                        .build();
 
-        root.add(top, BorderLayout.NORTH);
-        root.add(wrapTable(historyTable), BorderLayout.CENTER);
-
-        return root;
-    }
-
-    private JComponent buildBottomLog() {
-        JPanel root = new JPanel(new BorderLayout());
-        root.setBorder(new EmptyBorder(0, 16, 14, 16));
-
-        logArea.setRows(6);
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        logArea.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        JScrollPane sp = new JScrollPane(logArea);
-        sp.setBorder(BorderFactory.createTitledBorder("Activity log"));
-        root.add(sp, BorderLayout.CENTER);
-
-        return root;
-    }
-
-
-
-    private void doEntry() {
-        String plate = plateField.getText().trim();
-        String type = (String) vehicleTypeBox.getSelectedItem();
-
-        if (plate.isEmpty()) {
-            toast("Plate cannot be empty.");
-            return;
-        }
-
-        String json = "{\"plate\":\"" + escapeJson(plate) + "\",\"vehicleType\":\"" + escapeJson(type) + "\"}";
-        String url = BASE_URL + "/api/tickets/entry";
-
-        log("POST " + url + "  " + json);
-
-        runAsync(() -> postJson(url, json),
-                body -> {
-                    toast("Entry created.");
-                    log("Response:\n" + body);
-                    refreshLive();
-                },
-                err -> {
-                    toast("Entry failed.");
-                    log("Error: " + err);
-                });
-    }
-
-    private void doExit() {
-        String plate = plateField.getText().trim();
-        if (plate.isEmpty()) {
-            toast("Enter plate, or select a row in Live and use 'Close Selected'.");
-            return;
-        }
-
-        String json = "{\"plate\":\"" + escapeJson(plate) + "\"}";
-        String url = BASE_URL + "/api/tickets/exit";
-
-        log("POST " + url + "  " + json);
-
-        runAsync(() -> postJson(url, json),
-                body -> {
-                    toast("Ticket closed.");
-                    log("Response:\n" + body);
-                    refreshLive();
-                    refreshHistory();
-                },
-                err -> {
-                    toast("Exit failed.");
-                    log("Error: " + err);
-                });
-    }
-
-    private void closeSelectedFromLive() {
-        int row = liveTable.getSelectedRow();
-        if (row < 0) {
-            toast("Select a row in Live first.");
-            return;
-        }
-        // plate is column 1
-        String plate = String.valueOf(liveModel.getValueAt(row, 1));
-        plateField.setText(plate);
-        doExit();
-    }
-
-    private void refreshLive() {
-        String url = BASE_URL + "/api/tickets?status=OPEN&sort=entryTime,desc";
-        log("GET " + url);
-
-        runAsync(() -> get(url),
-                body -> {
-                    List<Row> rows = parseTicketsJson(body);
-                    fillLive(rows);
-                    liveCountLabel.setText(String.valueOf(rows.size()));
-                    pingServerOk();
-                },
-                err -> {
-                    liveAreaFallback("Live refresh failed: " + err);
-                    pingServerFail();
-                });
-    }
-
-    private void refreshHistory() {
-        String url = BASE_URL + "/api/tickets?status=CLOSED&sort=exitTime,desc";
-        log("GET " + url);
-
-        runAsync(() -> get(url),
-                body -> {
-                    List<Row> rows = parseTicketsJson(body);
-                    fillHistory(rows);
-                    historyCountLabel.setText(String.valueOf(rows.size()));
-                    pingServerOk();
-                },
-                err -> {
-                    historyAreaFallback("History refresh failed: " + err);
-                    pingServerFail();
-                });
-    }
-
-    private void pingServer() {
-        String url = BASE_URL + "/health";
-        log("GET " + url);
-
-        runAsync(() -> get(url),
-                body -> {
-                    pingServerOk();
-                    log("Health:\n" + body);
-                    toast("Server reachable.");
-                },
-                err -> {
-                    pingServerFail();
-                    log("Health error: " + err);
-                    toast("Server not reachable.");
-                });
-    }
-
-
-
-    private void fillLive(List<Row> rows) {
-        liveModel.setRowCount(0);
-        for (Row r : rows) {
-            // Live columns: id, plate, type, entryTime, lot, slot, status
-            liveModel.addRow(new Object[]{
-                    r.id, r.plate, r.vehicleType, r.entryTime, nz(r.lot), nz(r.slot), r.status
-            });
-        }
-    }
-
-    private void fillHistory(List<Row> rows) {
-        historyModel.setRowCount(0);
-        for (Row r : rows) {
-            historyModel.addRow(new Object[]{
-                    r.id, r.plate, r.vehicleType, r.entryTime, nz(r.exitTime), nz(r.amount),
-                    nz(r.lot), nz(r.slot), r.status
-            });
-        }
-    }
-
-    private String nz(String s) {
-        return (s == null || s.isBlank() || s.equals("null")) ? "—" : s;
-    }
-
-
-    private void liveAreaFallback(String msg) {
-        toast(msg);
-        log(msg);
-    }
-
-    private void historyAreaFallback(String msg) {
-        toast(msg);
-        log(msg);
-    }
-
-
-
-    private void styleTable(JTable table) {
-        table.setRowHeight(28);
-        table.setFillsViewportHeight(true);
-        table.setShowVerticalLines(false);
-        table.setGridColor(new Color(235, 235, 235));
-        table.getTableHeader().setReorderingAllowed(false);
-
-        // Status column color
-        DefaultTableCellRenderer renderer = new DefaultTableCellRenderer() {
-            @Override public Component getTableCellRendererComponent(
-                    JTable tbl, Object val, boolean isSelected, boolean hasFocus, int row, int col) {
-
-                Component c = super.getTableCellRendererComponent(tbl, val, isSelected, hasFocus, row, col);
-
-                // Slight zebra striping
-                if (!isSelected) {
-                    c.setBackground(row % 2 == 0 ? Color.WHITE : new Color(248, 248, 248));
+                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() >= 400) {
+                    throw new RuntimeException("HTTP " + resp.statusCode() + " : " + resp.body());
                 }
 
-                // status cell highlight
-                String header = tbl.getColumnName(col);
-                if ("Status".equalsIgnoreCase(header) && val != null) {
-                    String s = String.valueOf(val);
-                    if (!isSelected) {
-                        if ("OPEN".equalsIgnoreCase(s)) c.setForeground(new Color(0, 128, 0));
-                        else if ("CLOSED".equalsIgnoreCase(s)) c.setForeground(new Color(90, 90, 90));
-                        else c.setForeground(Color.DARK_GRAY);
-                    }
-                } else {
-                    if (!isSelected) c.setForeground(Color.DARK_GRAY);
-                }
+                // backend returns JSON array of tickets
+                return mapper.readValue(resp.body(), new TypeReference<List<TicketDTO>>() {});
+            }
 
-                setBorder(new EmptyBorder(0, 8, 0, 8));
-                return c;
+            @Override
+            protected void done() {
+                try {
+                    List<TicketDTO> tickets = get();
+                    onSuccess.accept(tickets);
+                    setStatus("Loaded " + tickets.size() + " tickets.");
+                } catch (Exception ex) {
+                    setStatus("Error: " + ex.getMessage());
+                    JOptionPane.showMessageDialog(ParkingSwingUI.this,
+                            ex.getMessage(), "API Error", JOptionPane.ERROR_MESSAGE);
+                }
             }
         };
+        worker.execute();
+    }
 
-        for (int i = 0; i < table.getColumnCount(); i++) {
-            table.getColumnModel().getColumn(i).setCellRenderer(renderer);
+    // ---------- Helpers ----------
+
+    private static String buildUrl(String base, Map<String, String> params) {
+        if (params == null || params.isEmpty()) return base;
+
+        String q = params.entrySet().stream()
+                .map(e -> enc(e.getKey()) + "=" + enc(e.getValue()))
+                .collect(Collectors.joining("&"));
+        return base + "?" + q;
+    }
+
+    private static String enc(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    // UI dropdown uses "exitTime desc" => API wants "exitTime,desc"
+    private static String toSortParam(String uiVal) {
+        if (uiVal == null || uiVal.isBlank()) return "";
+        String[] parts = uiVal.trim().split("\\s+");
+        if (parts.length == 2) return parts[0] + "," + parts[1];
+        return uiVal.trim();
+    }
+
+    private static DefaultTableModel tableModel() {
+        return new DefaultTableModel(new Object[]{
+                "ID", "Plate", "Type", "Status", "Entry Time", "Exit Time", "Amount"
+        }, 0) {
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+        };
+    }
+
+    private static void fillTable(DefaultTableModel model, List<TicketDTO> tickets) {
+        model.setRowCount(0);
+        for (TicketDTO t : tickets) {
+            model.addRow(new Object[]{
+                    t.id,
+                    t.plate,
+                    t.vehicleType,
+                    t.status,
+                    t.entryTime,
+                    t.exitTime,
+                    t.amount
+            });
         }
     }
 
-    private JComponent wrapTable(JTable table) {
-        JScrollPane sp = new JScrollPane(table);
-        sp.setBorder(BorderFactory.createLineBorder(new Color(220, 220, 220)));
-        return sp;
+    private static void styleTable(JTable table) {
+        table.setRowHeight(28);
+        table.setFillsViewportHeight(true);
+        table.setAutoCreateRowSorter(true);
+        table.getTableHeader().setReorderingAllowed(false);
     }
 
-    private JPanel statPill(String label, JLabel value) {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        p.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(225, 225, 225)),
-                new EmptyBorder(6, 10, 6, 10)
-        ));
-        p.setBackground(new Color(250, 250, 250));
-        JLabel l = new JLabel(label + ":");
-        l.setForeground(new Color(90, 90, 90));
-        value.setFont(value.getFont().deriveFont(Font.BOLD, 14f));
-        p.add(l);
-        p.add(value);
-        return p;
+    private void setStatus(String msg) {
+        statusBar.setText(msg);
     }
 
-    private JButton softButton(String text) {
-        JButton b = new JButton(text);
-        b.setFocusPainted(false);
-        b.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(210, 210, 210)),
-                new EmptyBorder(8, 12, 8, 12)
-        ));
-        b.setBackground(new Color(245, 245, 245));
-        return b;
-    }
-
-    private JButton primaryButton(String text) {
-        JButton b = new JButton(text);
-        b.setFocusPainted(false);
-        b.setForeground(Color.WHITE);
-        b.setBackground(new Color(40, 111, 235));
-        b.setBorder(new EmptyBorder(10, 14, 10, 14));
-        return b;
-    }
-
-    private JButton dangerButton(String text) {
-        JButton b = new JButton(text);
-        b.setFocusPainted(false);
-        b.setForeground(Color.WHITE);
-        b.setBackground(new Color(220, 60, 60));
-        b.setBorder(new EmptyBorder(10, 14, 10, 14));
-        return b;
-    }
-
-    private void pingServerOk() {
-        serverStatusLabel.setText("Server: online");
-        serverStatusLabel.setBackground(new Color(230, 255, 230));
-        serverStatusLabel.setForeground(new Color(0, 120, 0));
-        serverStatusLabel.setBorder(new EmptyBorder(6, 10, 6, 10));
-    }
-
-    private void pingServerFail() {
-        serverStatusLabel.setText("Server: offline");
-        serverStatusLabel.setBackground(new Color(255, 235, 235));
-        serverStatusLabel.setForeground(new Color(170, 0, 0));
-        serverStatusLabel.setBorder(new EmptyBorder(6, 10, 6, 10));
-    }
-
-    // ---------------- HTTP ----------------
-
-    private String get(String url) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .header("Accept", "application/json")
-                .build();
-        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (res.statusCode() >= 400) throw new RuntimeException("HTTP " + res.statusCode() + " -> " + res.body());
-        return res.body();
-    }
-
-    private String postJson(String url, String json) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .build();
-        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (res.statusCode() >= 400) throw new RuntimeException("HTTP " + res.statusCode() + " -> " + res.body());
-        return res.body();
-    }
-
-    private void runAsync(ThrowingSupplier supplier,
-                          java.util.function.Consumer<String> onSuccess,
-                          java.util.function.Consumer<String> onError) {
-        new Thread(() -> {
-            try {
-                String body = supplier.get();
-                SwingUtilities.invokeLater(() -> onSuccess.accept(body));
-            } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> onError.accept(ex.toString()));
+    private static void setLookAndFeel() {
+        try {
+            // Nimbus looks decent out of the box
+            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
+                if ("Nimbus".equals(info.getName())) {
+                    UIManager.setLookAndFeel(info.getClassName());
+                    return;
+                }
             }
-        }, "http-worker").start();
+        } catch (Exception ignored) {}
     }
 
-    @FunctionalInterface
-    private interface ThrowingSupplier { String get() throws Exception; }
-
-    // ---------------- Logging / UX ----------------
-
-    private void log(String msg) {
-        logArea.append(msg + "\n\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
-    }
-
-    private void toast(String msg) {
-        JOptionPane.showMessageDialog(this, msg);
-    }
-
-    private String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    // ---------------- Minimal JSON parsing ----------------
-    // This is intentionally simple to avoid extra dependencies.
-    // It expects an array of objects like: [{"id":1,"plate":"...","vehicleType":"CAR",...}, ...]
-    // If your backend returns different names, tell me and I’ll adjust keys.
-
-    private static class Row {
-        String id, plate, vehicleType, entryTime, exitTime, amount, lot, slot, status;
-    }
-
-    private List<Row> parseTicketsJson(String json) {
-        // If backend returns { ... } wrap or with HTTP headers, clean it.
-        String s = json.trim();
-        if (!s.startsWith("[")) {
-            // sometimes backend may return an object; try to detect array inside
-            int i = s.indexOf('[');
-            int j = s.lastIndexOf(']');
-            if (i >= 0 && j > i) s = s.substring(i, j + 1);
-        }
-
-        List<Row> rows = new ArrayList<>();
-        if (!s.startsWith("[") || !s.endsWith("]")) return rows;
-
-        // split objects (naive but works for flat JSON without nested objects)
-        List<String> objects = splitTopLevelObjects(s);
-        for (String obj : objects) {
-            Row r = new Row();
-            r.id = getJsonValue(obj, "id");
-            r.plate = stripQuotes(getJsonValue(obj, "plate"));
-            r.vehicleType = stripQuotes(getJsonValue(obj, "vehicleType"));
-            r.entryTime = stripQuotes(getJsonValue(obj, "entryTime"));
-            r.exitTime = stripQuotes(getJsonValue(obj, "exitTime"));
-            r.amount = stripQuotes(getJsonValue(obj, "amount"));
-            r.lot = stripQuotes(getJsonValue(obj, "lot"));
-            r.slot = stripQuotes(getJsonValue(obj, "slot"));
-            r.status = stripQuotes(getJsonValue(obj, "status"));
-            rows.add(r);
-        }
-        return rows;
-    }
-
-    private static List<String> splitTopLevelObjects(String arrayJson) {
-        List<String> out = new ArrayList<>();
-        String s = arrayJson.trim();
-        if (s.length() < 2) return out;
-        // remove [ ]
-        s = s.substring(1, s.length() - 1).trim();
-        if (s.isEmpty()) return out;
-
-        int depth = 0;
-        boolean inQuotes = false;
-        int start = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '"' && (i == 0 || s.charAt(i - 1) != '\\')) inQuotes = !inQuotes;
-            if (inQuotes) continue;
-
-            if (c == '{') depth++;
-            if (c == '}') depth--;
-
-            if (depth == 0 && c == '}' && i + 1 < s.length()) {
-                // object ends; next char might be comma
-                out.add(s.substring(start, i + 1).trim());
-                // move start to next object (skip comma + spaces)
-                int k = i + 1;
-                while (k < s.length() && (s.charAt(k) == ',' || Character.isWhitespace(s.charAt(k)))) k++;
-                start = k;
-            }
-        }
-        // last object
-        if (start < s.length()) out.add(s.substring(start).trim());
-        return out;
-    }
-
-    private static String getJsonValue(String objJson, String key) {
-        // naive: find "key": then read until comma or end
-        String k = "\"" + key + "\"";
-        int idx = objJson.indexOf(k);
-        if (idx < 0) return null;
-        int colon = objJson.indexOf(':', idx + k.length());
-        if (colon < 0) return null;
-
-        int i = colon + 1;
-        while (i < objJson.length() && Character.isWhitespace(objJson.charAt(i))) i++;
-
-        // value can be string, number, null
-        if (i >= objJson.length()) return null;
-
-        if (objJson.charAt(i) == '"') {
-            int j = i + 1;
-            while (j < objJson.length()) {
-                if (objJson.charAt(j) == '"' && objJson.charAt(j - 1) != '\\') break;
-                j++;
-            }
-            if (j < objJson.length()) return objJson.substring(i, j + 1);
-            return objJson.substring(i);
-        } else {
-            int j = i;
-            while (j < objJson.length() && objJson.charAt(j) != ',' && objJson.charAt(j) != '}') j++;
-            return objJson.substring(i, j).trim();
-        }
-    }
-
-    private static String stripQuotes(String v) {
-        if (v == null) return null;
-        String s = v.trim();
-        if (s.startsWith("\"") && s.endsWith("\"") && s.length() >= 2) {
-            s = s.substring(1, s.length() - 1);
-        }
-        return s;
+    // ---------- DTO matching your JSON fields ----------
+    public static class TicketDTO {
+        public Long id;
+        public String plate;
+        public String vehicleType;
+        public String status;
+        public String entryTime;  // keeping as String for simplicity (matches JSON)
+        public String exitTime;
+        public Double amount;
     }
 
     public static void main(String[] args) {
