@@ -11,6 +11,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="demo" target="21" />
       <module name="parking_backend" target="21" />
     </bytecodeTargetLevel>
   </component>

@@ -4,22 +4,15 @@ import com.dev.parking.entity.Ticket;
 import com.dev.parking.entity.TicketStatus;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
-import java.util.Optional;
 
-public interface TicketRepository extends JpaRepository<Ticket, Long> {
+public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecificationExecutor<Ticket> {
 
-    // Find the currently OPEN ticket for a given plate (used when closing a ticket)
-    Optional<Ticket> findByPlateAndStatus(String plate, TicketStatus status);
-
-    // Check if an OPEN ticket already exists for a plate (used when creating entry)
-    boolean existsByPlateAndStatus(String plate, TicketStatus status);
-
-    // Basic search examples (we'll use these for filter endpoints)
-    List<Ticket> findByPlate(String plate);
-    List<Ticket> findByStatus(TicketStatus status);
-
-    // Same as findByStatus, but allows sorting from the controller (e.g. entryTime desc)
+    // for: repo.findByStatus(status, sort)
     List<Ticket> findByStatus(TicketStatus status, Sort sort);
+
+    // for: repo.existsByPlateIgnoreCaseAndStatus(plate, OPEN)
+    boolean existsByPlateIgnoreCaseAndStatus(String plate, TicketStatus status);
 }
