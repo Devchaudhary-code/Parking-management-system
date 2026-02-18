@@ -7,12 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecificationExecutor<Ticket> {
 
-    // for: repo.findByStatus(status, sort)
-    List<Ticket> findByStatus(TicketStatus status, Sort sort);
-
-    // for: repo.existsByPlateIgnoreCaseAndStatus(plate, OPEN)
     boolean existsByPlateIgnoreCaseAndStatus(String plate, TicketStatus status);
+
+    Optional<Ticket> findFirstByPlateIgnoreCaseAndStatusOrderByEntryTimeDesc(String plate, TicketStatus status);
+
+    // optional (not needed if you're using Specifications + sort)
+    List<Ticket> findByStatus(TicketStatus status, Sort sort);
 }

@@ -1,13 +1,14 @@
 package com.dev.parking.service;
 
+
 import com.dev.parking.entity.Ticket;
 import com.dev.parking.entity.TicketStatus;
 import com.dev.parking.entity.VehicleType;
 import com.dev.parking.repository.TicketRepository;
-import com.dev.parking.repository.TicketSpecifications;
-import org.springframework.data.domain.*;
-import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 
@@ -20,24 +21,41 @@ public class TicketService {
         this.ticketRepository = ticketRepository;
     }
 
-    public  Page<Ticket> findTickets(
-            TicketStatus status,
-            String plate,
-            VehicleType vehicleType,
-            LocalDateTime from,
-            LocalDateTime to,
-            int page,
-            int size,
-            Sort sort
-    ) {
-        Specification<Ticket> spec = Specification.where(TicketSpecifications.hasStatus(status))
-                .and(TicketSpecifications.plateContains(plate))
-                .and(TicketSpecifications.hasVehicleType(vehicleType))
-                .and(TicketSpecifications.entryTimeFrom(from))
-                .and(TicketSpecifications.entryTimeTo(to));
+    @Transactional
+    public Ticket manualEntry(String plate, VehicleType type) {
+        String normalizedPlate = normalizePlate(plate);
 
-        Pageable pageable = PageRequest.of(page, size, sort);
-        return ticketRepository.findAll(spec, pageable);
+        boolean alreadyOpen = ticketRepository.existsByPlateIgnoreCaseAndStatus(normalizedPlate, TicketStatus.OPEN);
+        if (alreadyOpen) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ticket already OPEN for plate " + normalizedPlate);
+        }
+
+        Ticket t = new Ticket();
+        t.setPlate(normalizedPlate);
+        t.setVehicleType(type);
+        t.setStatus(TicketStatus.OPEN);
+        t.setEntryTime(LocalDateTime.now());
+
+        return ticketRepository.save(t);
+    }
+
+    @Transactional
+    public Ticket manualExit(String plate) {
+        String normalizedPlate = normalizePlate(plate);
+
+        Ticket t = ticketRepository
+                .findFirstByPlateIgnoreCaseAndStatusOrderByEntryTimeDesc(normalizedPlate, TicketStatus.OPEN)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No OPEN ticket found for plate " + normalizedPlate));
+
+        t.setExitTime(LocalDateTime.now());
+        t.setStatus(TicketStatus.CLOSED);
+
+        return ticketRepository.save(t);
+    }
+
+    private String normalizePlate(String plate) {
+        return plate == null ? null : plate.trim().toUpperCase();
     }
 }
-
