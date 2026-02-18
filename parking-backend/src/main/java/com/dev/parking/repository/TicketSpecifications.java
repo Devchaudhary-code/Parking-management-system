@@ -19,7 +19,7 @@ public class TicketSpecifications {
                 : cb.equal(root.get("vehicleType"), vehicleType);
     }
 
-    // plate contains (case-insensitive)
+
     public static Specification<Ticket> plateContains(String plate) {
         return (root, query, cb) -> {
             if (plate == null || plate.trim().isEmpty()) return cb.conjunction();
@@ -28,7 +28,7 @@ public class TicketSpecifications {
         };
     }
 
-    // Applies to entryTime by default
+
     public static Specification<Ticket> entryTimeFrom(LocalDateTime from) {
         return (root, query, cb) -> from == null ? cb.conjunction()
                 : cb.greaterThanOrEqualTo(root.get("entryTime"), from);

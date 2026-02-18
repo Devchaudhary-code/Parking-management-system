@@ -24,7 +24,7 @@ public class BackendClient {
         if (response.statusCode() >= 400) {
             throw new RuntimeException("Backend error: " + response.statusCode() + " -> " + response.body());
         }
-        return response.body(); // Ticket JSON
+        return response.body();
     }
 
     private static String escape(String s) {

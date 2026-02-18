@@ -15,6 +15,6 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
 
     Optional<Ticket> findFirstByPlateIgnoreCaseAndStatusOrderByEntryTimeDesc(String plate, TicketStatus status);
 
-    // optional (not needed if you're using Specifications + sort)
+
     List<Ticket> findByStatus(TicketStatus status, Sort sort);
 }

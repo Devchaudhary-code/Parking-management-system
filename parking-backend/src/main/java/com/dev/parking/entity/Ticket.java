@@ -34,8 +34,7 @@ public class Ticket {
     @Column(name = "amount")
     private BigDecimal amount;
 
-//     @Column(name = "ticketID")
-//     private String ticketId;
+
 
     public Ticket() {
     }

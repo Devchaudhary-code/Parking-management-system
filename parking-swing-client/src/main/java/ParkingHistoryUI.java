@@ -58,7 +58,7 @@ public class ParkingHistoryUI extends JFrame {
         setContentPane(buildRoot());
         wireActions();
 
-        // default view: history usually CLOSED
+
         refresh();
     }
 
@@ -118,7 +118,7 @@ public class ParkingHistoryUI extends JFrame {
         filters.add(clear);
         filters.add(refresh);
 
-        // Wire header buttons
+
         apply.addActionListener(e -> refresh());
         refresh.addActionListener(e -> refresh());
         clear.addActionListener(e -> {
@@ -132,7 +132,7 @@ public class ParkingHistoryUI extends JFrame {
         header.add(titleBlock, BorderLayout.WEST);
         header.add(filters, BorderLayout.EAST);
 
-        // subtle divider
+
         JPanel divider = new JPanel();
         divider.setPreferredSize(new Dimension(1, 1));
         divider.setBackground(new Color(230, 230, 230));
@@ -302,15 +302,15 @@ public class ParkingHistoryUI extends JFrame {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            FlatLightLaf.setup(); // ✅ light mode
-
-            // light, modern rounding
+            FlatLightLaf.setup();
             UIManager.put("Component.arc", 14);
             UIManager.put("Button.arc", 14);
             UIManager.put("TextComponent.arc", 14);
             UIManager.put("ScrollBar.width", 12);
 
-            new ParkingHistoryUI().setVisible(true);
+            new LoginUI().setVisible(true);
         });
     }
+
+
 }
