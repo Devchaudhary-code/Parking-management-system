@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.dev</groupId>
+    <artifactId>parking-final</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Parking Final (Parent)</name>
+
+    <modules>
+        <module>parking-backend</module>
+        <module>parking-swing-client</module>
+    </modules>
+
+    <properties>
+        <java.version>25</java.version>
+        <spring-boot.version>4.0.2</spring-boot.version>
+    </properties>
+
+</project>
